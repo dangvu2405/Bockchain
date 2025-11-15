@@ -87,9 +87,21 @@ async function deployOurToken(chainId: number) {
     parentDir,
     "deployed-contracts.json"
   );
-  const oldContracts: DeployedContracts = JSON.parse(
-    fs.readFileSync(deployedContractsPath, "utf8")
-  );
+  
+  // Create file if it doesn't exist
+  let oldContracts: DeployedContracts = {};
+  if (fs.existsSync(deployedContractsPath)) {
+    oldContracts = JSON.parse(
+      fs.readFileSync(deployedContractsPath, "utf8")
+    );
+  } else {
+    // Initialize with empty structure
+    oldContracts = {
+      hardhat: {},
+      localhost: {},
+      sepolia: {},
+    };
+  }
 
   // Add the contract to the network we are deploying on it
   oldContracts[network.name] = {
