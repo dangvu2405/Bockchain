@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multisig Wallet - Giao diện Quản lý</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Load ethers.js from CDN (v5) as primary source -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <!-- Fallback to local file if CDN fails -->
+    <script>
+        if (typeof ethers === 'undefined') {
+            console.warn('CDN ethers failed, trying local file...');
+            const script = document.createElement('script');
+            script.src = 'ethers.umd.min.js';
+            script.onerror = function() {
+                console.error('Failed to load ethers library from both CDN and local file!');
+                alert('Lỗi: Không thể tải thư viện Ethers. Vui lòng kiểm tra kết nối internet hoặc tải lại trang.');
+            };
+            document.head.appendChild(script);
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Multisig Wallet</h1>
+            <p class="subtitle">Ví đa chữ ký - Quản lý giao dịch an toàn</p>
+        </header>
+
+        <!-- Connection Section -->
+        <section class="card" id="connection-section">
+            <h2>Kết nối Wallet</h2>
+            <div class="form-group">
+                <label for="contract-address">Địa chỉ Contract:</label>
+                <input type="text" id="contract-address" placeholder="0x..." />
+            </div>
+            <div class="form-group">
+                <label for="network-select">Mạng:</label>
+                <select id="network-select">
+                    <option value="localhost">Localhost (Hardhat)</option>
+                    <option value="sepolia">Sepolia Testnet</option>
+                    <option value="mainnet">Ethereum Mainnet</option>
+                </select>
+            </div>
+            <button id="connect-btn" class="btn btn-primary">Kết nối Wallet</button>
+            <div id="connection-status" class="status"></div>
+        </section>
+
+        <!-- Wallet Info Section -->
+        <section class="card" id="wallet-info-section" style="display: none;">
+            <h2>Thông tin Wallet</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Địa chỉ hiện tại:</span>
+                    <span id="current-address" class="info-value"></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Số dư Wallet:</span>
+                    <span id="wallet-balance" class="info-value">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Số lượng Owners:</span>
+                    <span id="owners-count" class="info-value">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Số phê duyệt cần thiết:</span>
+                    <span id="required-approvals" class="info-value">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Bạn là Owner:</span>
+                    <span id="is-owner-status" class="info-value">-</span>
+                </div>
+            </div>
+            <div class="owners-list">
+                <h3>Danh sách Owners:</h3>
+                <ul id="owners-list"></ul>
+            </div>
+        </section>
+
+        <!-- Deposit Section -->
+        <section class="card" id="deposit-section" style="display: none;">
+            <h2>Nạp tiền vào Wallet</h2>
+            <div class="form-group">
+                <label for="deposit-amount">Số lượng ETH:</label>
+                <input type="number" id="deposit-amount" step="0.001" placeholder="0.0" />
+            </div>
+            <button id="deposit-btn" class="btn btn-primary">Nạp tiền</button>
+            <div id="deposit-status" class="status"></div>
+        </section>
+
+        <!-- Submit Transaction Section -->
+        <section class="card" id="submit-section" style="display: none;">
+            <h2>Tạo giao dịch mới</h2>
+            <div class="form-group">
+                <label for="tx-to">Địa chỉ nhận:</label>
+                <input type="text" id="tx-to" placeholder="0x..." />
+            </div>
+            <div class="form-group">
+                <label for="tx-value">Số lượng ETH:</label>
+                <input type="number" id="tx-value" step="0.001" placeholder="0.0" />
+            </div>
+            <div class="form-group">
+                <label for="tx-data">Data (hex, tùy chọn):</label>
+                <input type="text" id="tx-data" placeholder="0x..." />
+            </div>
+            <button id="submit-tx-btn" class="btn btn-primary">Tạo giao dịch</button>
+            <div id="submit-status" class="status"></div>
+        </section>
+
+        <!-- Transactions Section -->
+        <section class="card" id="transactions-section" style="display: none;">
+            <h2>Danh sách giao dịch</h2>
+            <button id="refresh-txs-btn" class="btn btn-secondary">Làm mới</button>
+            <div id="transactions-list" class="transactions-list"></div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
