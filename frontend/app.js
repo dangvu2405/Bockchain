@@ -31,19 +31,27 @@ let contract = null;
 let contractAddress = '';
 let contractABI = null;
 
-// Contract ABI - Simplified version
+// Contract ABI - Complete version
 const MULTISIG_WALLET_ABI = [
     "function owners(uint256) view returns (address)",
     "function isOwner(address) view returns (bool)",
     "function required() view returns (uint256)",
+    "function transactionCount() view returns (uint256)",
     "function transactions(uint256) view returns (address to, uint256 value, bytes memory data, bool executed)",
-    "function submit(address _to, uint256 _value, bytes calldata _data) external",
+    "function submit(address _to, uint256 _value, bytes calldata _data) external returns (uint256)",
     "function approve(uint256 _txId) external",
     "function revoke(uint256 _txId) external",
     "function execute(uint256 _txId) external",
     "function approved(uint256, address) view returns (bool)",
+    "function getApprovalCount(uint256 _txId) view returns (uint256)",
+    "function getTransactionCount() view returns (uint256)",
+    "function getOwnerCount() view returns (uint256)",
+    "function getOwners() view returns (address[])",
+    "function getTransaction(uint256 _txId) view returns (address to, uint256 value, bytes memory data, bool executed)",
+    "function isApproved(uint256 _txId, address _owner) view returns (bool)",
+    "function getBalance() view returns (uint256)",
     "event Deposit(address indexed sender, uint256 amount)",
-    "event Submit(uint256 indexed txId)",
+    "event Submit(uint256 indexed txId, address indexed owner)",
     "event Approve(address indexed owner, uint256 indexed txId)",
     "event Revoke(address indexed owner, uint256 indexed txId)",
     "event Execute(uint256 indexed txId)"
@@ -214,23 +222,28 @@ async function loadWalletInfo() {
             return;
         }
 
-        // Get owners count and list
+        // Get owners count and list using new function
         let ownersCount = 0;
-        const ownersList = [];
+        let ownersList = [];
         try {
-            while (true) {
-                try {
-                    const owner = await contract.owners(ownersCount);
-                    ownersList.push(owner);
-                    ownersCount++;
-                } catch (e) {
-                    // Reached end of owners array
-                    break;
-                }
-            }
+            ownersCount = await contract.getOwnerCount();
+            ownersList = await contract.getOwners();
         } catch (e) {
             console.error('Error loading owners:', e);
-            showStatus('connection-status', 'Lỗi khi tải danh sách owners. Vui lòng thử lại.', 'error');
+            // Fallback to old method if new function doesn't exist
+            try {
+                while (true) {
+                    try {
+                        const owner = await contract.owners(ownersCount);
+                        ownersList.push(owner);
+                        ownersCount++;
+                    } catch (err) {
+                        break;
+                    }
+                }
+            } catch (err2) {
+                showStatus('connection-status', 'Lỗi khi tải danh sách owners. Vui lòng thử lại.', 'error');
+            }
         }
 
         document.getElementById('owners-count').textContent = ownersCount.toString();
@@ -428,20 +441,25 @@ async function createTransactionElement(tx, userAddress, required, ownersCount) 
     const div = document.createElement('div');
     div.className = 'transaction-item';
     
-    // Calculate approval count
+    // Get approval count using new function
     let approvalCount = 0;
     try {
-        for (let i = 0; i < ownersCount; i++) {
-            try {
-                const owner = await contract.owners(i);
-                const approved = await contract.approved(tx.id, owner);
-                if (approved) approvalCount++;
-            } catch (e) {
-                break;
-            }
-        }
+        approvalCount = await contract.getApprovalCount(tx.id);
     } catch (e) {
-        console.error('Error calculating approval count:', e);
+        // Fallback to old method if new function doesn't exist
+        try {
+            for (let i = 0; i < ownersCount; i++) {
+                try {
+                    const owner = await contract.owners(i);
+                    const approved = await contract.approved(tx.id, owner);
+                    if (approved) approvalCount++;
+                } catch (err) {
+                    break;
+                }
+            }
+        } catch (err2) {
+            console.error('Error calculating approval count:', err2);
+        }
     }
     
     div.innerHTML = `
