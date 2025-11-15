@@ -170,9 +170,11 @@ async function connectWallet() {
         // Save address to localStorage
         localStorage.setItem('multisigWalletAddress', contractAddress);
         
-        // Get user address
+        // Get user address and balance
         const userAddress = await signer.getAddress();
+        const userBalance = await provider.getBalance(userAddress);
         document.getElementById('current-address').textContent = userAddress;
+        document.getElementById('user-balance').textContent = `${ethers.utils.formatEther(userBalance)} ETH`;
         
         showStatus('connection-status', 'Kết nối thành công!', 'success');
         
@@ -209,6 +211,11 @@ async function loadWalletInfo() {
         const balance = await provider.getBalance(contractAddress);
         document.getElementById('wallet-balance').textContent = 
             `${ethers.utils.formatEther(balance)} ETH`;
+        
+        // Update user balance
+        const currentUserAddress = await signer.getAddress();
+        const currentUserBalance = await provider.getBalance(currentUserAddress);
+        document.getElementById('user-balance').textContent = `${ethers.utils.formatEther(currentUserBalance)} ETH`;
 
         // Get required approvals with error handling
         let required;
@@ -217,7 +224,12 @@ async function loadWalletInfo() {
             document.getElementById('required-approvals').textContent = required.toString();
         } catch (error) {
             console.error('Error calling required():', error);
-            showStatus('connection-status', 'Lỗi: Không thể đọc thông tin contract. Đảm bảo địa chỉ contract đúng và network đã được chọn đúng.', 'error');
+            const errorMsg = error.message || '';
+            if (errorMsg.includes('CALL_EXCEPTION') || errorMsg.includes('revert')) {
+                showStatus('connection-status', '⚠️ Lỗi: Địa chỉ này không phải MultisigWallet contract hoặc contract chưa được deploy. Vui lòng deploy contract trước hoặc kiểm tra lại địa chỉ.', 'error');
+            } else {
+                showStatus('connection-status', 'Lỗi: Không thể đọc thông tin contract. Đảm bảo địa chỉ contract đúng và network đã được chọn đúng.', 'error');
+            }
             document.getElementById('required-approvals').textContent = 'Lỗi';
             return;
         }
@@ -249,7 +261,7 @@ async function loadWalletInfo() {
         document.getElementById('owners-count').textContent = ownersCount.toString();
         
         // Check if current user is owner
-        const userAddress = await signer.getAddress();
+        const userAddress = currentUserAddress;
         let isOwner = false;
         try {
             isOwner = await contract.isOwner(userAddress);
@@ -287,15 +299,38 @@ async function deposit() {
             return;
         }
 
+        if (!contractAddress) {
+            showStatus('deposit-status', 'Vui lòng kết nối contract trước', 'error');
+            return;
+        }
+
         const amount = document.getElementById('deposit-amount').value;
         if (!amount || parseFloat(amount) <= 0) {
             showStatus('deposit-status', 'Vui lòng nhập số lượng hợp lệ', 'error');
             return;
         }
 
+        // Check user balance before deposit
+        const userAddress = await signer.getAddress();
+        const userBalance = await provider.getBalance(userAddress);
+        const depositAmount = ethers.utils.parseEther(amount);
+        
+        // Estimate gas cost (rough estimate: 21000 gas for simple transfer)
+        const gasPrice = await provider.getGasPrice();
+        const estimatedGas = ethers.BigNumber.from(21000);
+        const estimatedGasCost = gasPrice.mul(estimatedGas);
+        const totalNeeded = depositAmount.add(estimatedGasCost);
+
+        if (userBalance.lt(totalNeeded)) {
+            const balanceEth = ethers.utils.formatEther(userBalance);
+            const neededEth = ethers.utils.formatEther(totalNeeded);
+            showStatus('deposit-status', `⚠️ Số dư không đủ! Bạn có ${balanceEth} ETH, cần ${neededEth} ETH (bao gồm gas fee). Vui lòng nạp thêm ETH vào account.`, 'error');
+            return;
+        }
+
         const tx = await signer.sendTransaction({
             to: contractAddress,
-            value: ethers.utils.parseEther(amount)
+            value: depositAmount
         });
 
         showStatus('deposit-status', `Đang gửi giao dịch... Hash: ${tx.hash}`, 'info');
@@ -304,6 +339,11 @@ async function deposit() {
         showStatus('deposit-status', `Nạp tiền thành công! Hash: ${tx.hash}`, 'success');
         
         document.getElementById('deposit-amount').value = '';
+        
+        // Update balances
+        const updatedUserBalance = await provider.getBalance(userAddress);
+        document.getElementById('user-balance').textContent = `${ethers.utils.formatEther(updatedUserBalance)} ETH`;
+        
         await loadWalletInfo();
 
     } catch (error) {
