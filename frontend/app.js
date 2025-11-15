@@ -140,7 +140,24 @@ async function connectWallet() {
 
         // Connect to contract
         contractAddress = contractAddr;
+        
+        // Check if contract has code at this address
+        const code = await provider.getCode(contractAddress);
+        if (code === '0x' || code === '0x0') {
+            showStatus('connection-status', 'Không tìm thấy contract tại địa chỉ này. Vui lòng kiểm tra lại địa chỉ hoặc đảm bảo contract đã được deploy.', 'error');
+            return;
+        }
+        
         contract = new ethers.Contract(contractAddress, MULTISIG_WALLET_ABI, signer);
+        
+        // Verify contract by calling a simple view function
+        try {
+            await contract.required();
+        } catch (error) {
+            showStatus('connection-status', 'Địa chỉ này không phải là Multisig Wallet contract. Vui lòng kiểm tra lại địa chỉ.', 'error');
+            console.error('Contract verification error:', error);
+            return;
+        }
         
         // Save address to localStorage
         localStorage.setItem('multisigWalletAddress', contractAddress);
@@ -168,35 +185,64 @@ async function connectWallet() {
 
 async function loadWalletInfo() {
     try {
-        if (!contract) return;
+        if (!contract) {
+            showStatus('connection-status', 'Chưa kết nối contract. Vui lòng kết nối wallet trước.', 'error');
+            return;
+        }
+
+        // Verify contract is still valid
+        const code = await provider.getCode(contractAddress);
+        if (code === '0x' || code === '0x0') {
+            showStatus('connection-status', 'Contract không còn tồn tại tại địa chỉ này.', 'error');
+            return;
+        }
 
         // Get wallet balance
         const balance = await provider.getBalance(contractAddress);
         document.getElementById('wallet-balance').textContent = 
             `${ethers.utils.formatEther(balance)} ETH`;
 
-        // Get required approvals
-        const required = await contract.required();
-        document.getElementById('required-approvals').textContent = required.toString();
+        // Get required approvals with error handling
+        let required;
+        try {
+            required = await contract.required();
+            document.getElementById('required-approvals').textContent = required.toString();
+        } catch (error) {
+            console.error('Error calling required():', error);
+            showStatus('connection-status', 'Lỗi: Không thể đọc thông tin contract. Đảm bảo địa chỉ contract đúng và network đã được chọn đúng.', 'error');
+            document.getElementById('required-approvals').textContent = 'Lỗi';
+            return;
+        }
 
         // Get owners count and list
         let ownersCount = 0;
         const ownersList = [];
         try {
             while (true) {
-                const owner = await contract.owners(ownersCount);
-                ownersList.push(owner);
-                ownersCount++;
+                try {
+                    const owner = await contract.owners(ownersCount);
+                    ownersList.push(owner);
+                    ownersCount++;
+                } catch (e) {
+                    // Reached end of owners array
+                    break;
+                }
             }
         } catch (e) {
-            // Reached end of owners array
+            console.error('Error loading owners:', e);
+            showStatus('connection-status', 'Lỗi khi tải danh sách owners. Vui lòng thử lại.', 'error');
         }
 
         document.getElementById('owners-count').textContent = ownersCount.toString();
         
         // Check if current user is owner
         const userAddress = await signer.getAddress();
-        const isOwner = await contract.isOwner(userAddress);
+        let isOwner = false;
+        try {
+            isOwner = await contract.isOwner(userAddress);
+        } catch (e) {
+            console.error('Error checking owner status:', e);
+        }
         document.getElementById('is-owner-status').textContent = isOwner ? 'Có' : 'Không';
         document.getElementById('is-owner-status').style.color = isOwner ? '#10b981' : '#ef4444';
 
@@ -301,9 +347,31 @@ async function submitTransaction() {
 
 async function loadTransactions() {
     try {
-        if (!contract) return;
+        if (!contract) {
+            const transactionsListEl = document.getElementById('transactions-list');
+            if (transactionsListEl) {
+                transactionsListEl.innerHTML = '<p>Chưa kết nối contract</p>';
+            }
+            return;
+        }
+
+        // Verify contract is still valid
+        try {
+            const code = await provider.getCode(contractAddress);
+            if (code === '0x' || code === '0x0') {
+                const transactionsListEl = document.getElementById('transactions-list');
+                if (transactionsListEl) {
+                    transactionsListEl.innerHTML = '<p style="color: #ef4444;">Contract không tồn tại</p>';
+                }
+                return;
+            }
+        } catch (e) {
+            console.error('Error checking contract code:', e);
+        }
 
         const transactionsListEl = document.getElementById('transactions-list');
+        if (!transactionsListEl) return;
+        
         transactionsListEl.innerHTML = '<p>Đang tải...</p>';
 
         // Get transaction count by trying to read until we get an error
@@ -312,18 +380,25 @@ async function loadTransactions() {
         
         try {
             while (true) {
-                const tx = await contract.transactions(txCount);
-                transactions.push({
-                    id: txCount,
-                    to: tx.to,
-                    value: tx.value,
-                    data: tx.data,
-                    executed: tx.executed
-                });
-                txCount++;
+                try {
+                    const tx = await contract.transactions(txCount);
+                    transactions.push({
+                        id: txCount,
+                        to: tx.to,
+                        value: tx.value,
+                        data: tx.data,
+                        executed: tx.executed
+                    });
+                    txCount++;
+                } catch (e) {
+                    // Reached end of transactions
+                    break;
+                }
             }
         } catch (e) {
-            // Reached end of transactions
+            console.error('Error loading transactions:', e);
+            transactionsListEl.innerHTML = '<p style="color: #ef4444;">Lỗi khi tải giao dịch</p>';
+            return;
         }
 
         if (transactions.length === 0) {
